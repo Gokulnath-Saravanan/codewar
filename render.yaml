@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: codewar-backend
+    env: node
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: JWT_SECRET
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: CLIENT_URL
+        fromService:
+          type: web
+          name: codewar-frontend
+          property: url
+
+  - type: static
+    name: codewar-frontend
+    buildCommand: cd client && npm install && npm run build
+    publishPath: client/build
+    envVars:
+      - key: REACT_APP_API_URL
+        fromService:
+          type: web
+          name: codewar-backend
+          property: url
+      - key: NODE_VERSION
+        value: 16 

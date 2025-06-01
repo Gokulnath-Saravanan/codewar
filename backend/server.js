@@ -11,6 +11,7 @@ const connectDB = require('./config/database');
 const { apiLimiter } = require('./middleware/rateLimiter');
 const { generateDailyChallenge, scheduleDailyProblemGeneration } = require('./utils/generateProblems');
 const Problem = require('./models/Problem');
+const errorHandler = require('./middleware/errorHandler');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -24,8 +25,11 @@ const adminRoutes = require('./routes/admin');
 
 const app = express();
 
-// Connect to MongoDB
-connectDB();
+// Modify the database connection logic
+if (process.env.NODE_ENV !== 'test') {
+  // Connect to MongoDB only if not in test environment
+  connectDB();
+}
 
 // Middleware
 app.use(helmet());
@@ -58,6 +62,9 @@ app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/admin', adminRoutes);
+
+// Add error handler after all routes
+app.use(errorHandler);
 
 // 404 handler
 app.use('/api/*', (req, res) => {
@@ -101,40 +108,42 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Schedule daily problem generation (runs at 12:00 AM every day)
-cron.schedule('0 0 * * *', async () => {
-  try {
-    console.log('Generating daily problem...');
-    const dailyProblem = await generateDailyChallenge();
-    
-    // Save the daily problem
-    const problem = new Problem({
-      ...dailyProblem,
-      isDaily: true,
-      dailyDate: new Date().toDateString()
-    });
-    
-    await problem.save();
-    console.log('Daily problem generated successfully:', problem.title);
-  } catch (error) {
-    console.error('Failed to generate daily problem:', error);
-  }
-});
+// Only schedule cron jobs if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  // Schedule daily problem generation (runs at 12:00 AM every day)
+  cron.schedule('0 0 * * *', async () => {
+    try {
+      console.log('Generating daily problem...');
+      const dailyProblem = await generateDailyChallenge();
+      
+      // Save the daily problem
+      const problem = new Problem({
+        ...dailyProblem,
+        isDaily: true,
+        dailyDate: new Date().toDateString()
+      });
+      
+      await problem.save();
+      console.log('Daily problem generated successfully:', problem.title);
+    } catch (error) {
+      console.error('Failed to generate daily problem:', error);
+    }
+  });
 
-// Schedule leaderboard updates (runs every hour)
-cron.schedule('0 * * * *', async () => {
-  try {
-    console.log('Updating leaderboards...');
-    // Update logic would go here
-    // This could involve calculating new rankings, updating user stats, etc.
-    console.log('Leaderboards updated successfully');
-  } catch (error) {
-    console.error('Failed to update leaderboards:', error);
-  }
-});
+  // Schedule leaderboard updates (runs every hour)
+  cron.schedule('0 * * * *', async () => {
+    try {
+      console.log('Updating leaderboards...');
+      // Update logic would go here
+      console.log('Leaderboards updated successfully');
+    } catch (error) {
+      console.error('Failed to update leaderboards:', error);
+    }
+  });
 
-// Start daily problem generation scheduler
-scheduleDailyProblemGeneration();
+  // Start daily problem generation scheduler
+  scheduleDailyProblemGeneration();
+}
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
@@ -159,3 +168,6 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
+
+// Export the app for testing
+module.exports = app;

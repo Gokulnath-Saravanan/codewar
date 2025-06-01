@@ -186,3 +186,89 @@ Please read our [Contributing Guide](./CONTRIBUTING.md) before submitting a Pull
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## CI/CD Pipeline Documentation
+
+This project implements a comprehensive CI/CD pipeline using GitHub Actions, SonarCloud, and Render.com.
+
+### Pipeline Stages
+
+1. **Test Stage**
+   - Runs backend tests with Jest
+   - Runs frontend tests
+   - Generates coverage reports
+   - Uses MongoDB service container for integration tests
+
+2. **SonarCloud Analysis**
+   - Performs code quality analysis
+   - Checks test coverage
+   - Identifies code smells and security issues
+   - Enforces quality gates
+
+3. **Build Stage**
+   - Builds frontend application
+   - Prepares backend for deployment
+   - Creates deployment artifacts
+
+4. **Deployment Stage**
+   - Deploys backend to Render.com
+   - Deploys frontend to Render.com
+   - Automatic deployment on main branch
+
+### Quality Gates
+
+The following quality standards are enforced:
+- Minimum 80% test coverage
+- Maximum 50 code smells
+- Zero critical bugs
+- Zero security vulnerabilities
+- Maximum 5 security hotspots
+- Maximum 3% code duplication
+
+### Environment Setup
+
+1. **Local Development**
+   ```bash
+   # Install dependencies
+   npm run install-all
+
+   # Run tests
+   npm test
+
+   # Start development servers
+   npm run dev
+   ```
+
+2. **CI/CD Setup**
+   - Configure GitHub repository secrets:
+     - `SONAR_TOKEN`
+     - `RENDER_API_KEY`
+     - `RENDER_BACKEND_SERVICE_ID`
+     - `RENDER_FRONTEND_SERVICE_ID`
+
+3. **Deployment URLs**
+   - Frontend: [Your-Frontend-URL]
+   - Backend: [Your-Backend-URL]
+   - SonarCloud Dashboard: [Your-SonarCloud-URL]
+
+### Monitoring and Maintenance
+
+- CI/CD pipeline status: GitHub Actions tab
+- Code quality metrics: SonarCloud dashboard
+- Deployment status: Render.com dashboard
+
+### Branch Strategy
+
+- `main`: Production branch, protected
+- `develop`: Development branch
+- Feature branches: Created from develop
+- Pull Request required for merging
+
+### Automated Checks
+
+- Unit tests
+- Integration tests
+- Code quality analysis
+- Security scanning
+- Build verification
+- Deployment verification

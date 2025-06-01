@@ -45,7 +45,7 @@ Replace these values in `sonar-project.properties`:
 ```properties
 sonar.projectKey=your-project-key
 sonar.organization=your-organization-key
-sonar.pullrequest.github.repository=your-username/codewar
+sonar.pullrequest.github.repository=your-Gokulnath-Saravanan/CampusCodewars
 ```
 
 ## Quality Gates Setup

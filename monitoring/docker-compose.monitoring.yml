@@ -69,7 +69,7 @@ services:
     image: infinityworks/github-exporter:latest
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - GITHUB_REPOSITORIES=yourusername/codewar
+      - GITHUB_REPOSITORIES=yourGokulnath-Saravanan/CampusCodewars
     ports:
       - "9171:9171"
     restart: unless-stopped

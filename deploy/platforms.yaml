@@ -5,7 +5,7 @@ version: '1.0'
 # Common settings across all platforms
 common:
   image:
-    repository: yourusername/codewar
+    repository: yourGokulnath-Saravanan/CampusCodewars
     pullPolicy: Always
     registries:
       - name: dockerhub

@@ -64,7 +64,7 @@ CMD ["node", "dist/server.js"]
 LABEL maintainer="Your Name <your.email@example.com>" \
       version="1.0" \
       description="CodeWar MERN Stack Application" \
-      org.opencontainers.image.source="https://github.com/yourusername/codewar"
+      org.opencontainers.image.source="https://github.com/yourGokulnath-Saravanan/CampusCodewars"
 
 # Expose port
 EXPOSE 3000 

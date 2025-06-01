@@ -6,8 +6,8 @@
 set -e
 
 # Configuration
-DOCKERHUB_REPO="yourusername/codewar"
-GHCR_REPO="ghcr.io/yourusername/codewar"
+DOCKERHUB_REPO="yourGokulnath-Saravanan/CampusCodewars"
+GHCR_REPO="ghcr.io/yourGokulnath-Saravanan/CampusCodewars"
 MAX_IMAGES_TO_KEEP=10
 RETENTION_DAYS=30
 

@@ -26,7 +26,7 @@ prometheus:
         - targets: ['github-exporter:9171']
       metrics_path: /metrics
       params:
-        repository: ['yourusername/codewar']
+        repository: ['yourGokulnath-Saravanan/CampusCodewars']
     
     # Application monitoring
     - job_name: 'nodejs-app'

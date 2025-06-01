@@ -8,7 +8,7 @@ on:
     branches: [ main, develop ]
 
 env:
-  DOCKERHUB_REPO: yourusername/codewar
+  DOCKERHUB_REPO: yourGokulnath-Saravanan/CampusCodewars
   GHCR_REPO: ghcr.io/${{ github.repository_owner }}/codewar
   PLATFORMS: linux/amd64,linux/arm64
 

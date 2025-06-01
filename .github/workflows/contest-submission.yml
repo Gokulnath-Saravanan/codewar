@@ -1,0 +1,202 @@
+name: Contest Submission Preparation
+
+on:
+  push:
+    branches: [ 'contest/*' ]
+  pull_request:
+    branches: [ 'contest/*' ]
+  workflow_dispatch:
+    inputs:
+      contest_id:
+        description: 'Contest ID'
+        required: true
+      validate_only:
+        description: 'Run validation only'
+        type: boolean
+        default: false
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  validate-contest:
+    name: Validate Contest
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Validate contest structure
+        run: |
+          node scripts/validate-contest.js \
+            --contest-id=${{ github.event.inputs.contest_id || github.ref_name }}
+      
+      - name: Validate test cases
+        run: |
+          node scripts/validate-test-cases.js \
+            --contest-id=${{ github.event.inputs.contest_id || github.ref_name }}
+      
+      - name: Check resource limits
+        run: |
+          node scripts/check-resource-limits.js \
+            --contest-id=${{ github.event.inputs.contest_id || github.ref_name }}
+      
+      - name: Validate scoring rules
+        run: |
+          node scripts/validate-scoring.js \
+            --contest-id=${{ github.event.inputs.contest_id || github.ref_name }}
+
+  prepare-contest:
+    name: Prepare Contest
+    needs: validate-contest
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.inputs.validate_only }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Generate test cases
+        run: |
+          node scripts/generate-test-cases.js \
+            --contest-id=${{ github.event.inputs.contest_id || github.ref_name }}
+      
+      - name: Prepare evaluation environment
+        run: |
+          node scripts/prepare-evaluation-env.js \
+            --contest-id=${{ github.event.inputs.contest_id || github.ref_name }}
+      
+      - name: Generate documentation
+        run: |
+          node scripts/generate-contest-docs.js \
+            --contest-id=${{ github.event.inputs.contest_id || github.ref_name }}
+      
+      - name: Upload contest artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: contest-package
+          path: |
+            contests/${{ github.event.inputs.contest_id || github.ref_name }}/
+            !contests/${{ github.event.inputs.contest_id || github.ref_name }}/internal/
+          retention-days: 30
+
+  test-submissions:
+    name: Test Sample Submissions
+    needs: prepare-contest
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.inputs.validate_only }}
+    
+    strategy:
+      matrix:
+        language: [javascript, python, java]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Download contest package
+        uses: actions/download-artifact@v3
+        with:
+          name: contest-package
+          path: contests/${{ github.event.inputs.contest_id || github.ref_name }}
+      
+      - name: Run sample submissions
+        run: |
+          node scripts/test-submissions.js \
+            --contest-id=${{ github.event.inputs.contest_id || github.ref_name }} \
+            --language=${{ matrix.language }}
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: submission-results-${{ matrix.language }}
+          path: test-results/submissions/${{ matrix.language }}/
+          retention-days: 7
+
+  quality-report:
+    name: Generate Quality Report
+    needs: [validate-contest, test-submissions]
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.inputs.validate_only }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+      
+      - name: Generate quality report
+        run: |
+          node scripts/generate-contest-quality-report.js \
+            --contest-id=${{ github.event.inputs.contest_id || github.ref_name }}
+      
+      - name: Upload quality report
+        uses: actions/upload-artifact@v3
+        with:
+          name: contest-quality-report
+          path: quality-reports/
+          retention-days: 30
+      
+      - name: Post report summary
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const report = JSON.parse(fs.readFileSync('quality-reports/summary.json', 'utf8'));
+            
+            const summary = `## Contest Quality Report
+            
+            ### Validation Results
+            - Structure: ${report.validation.structure ? '✅' : '❌'}
+            - Test Cases: ${report.validation.testCases ? '✅' : '❌'}
+            - Resource Limits: ${report.validation.resources ? '✅' : '❌'}
+            - Scoring Rules: ${report.validation.scoring ? '✅' : '❌'}
+            
+            ### Sample Submissions
+            ${Object.entries(report.submissions)
+              .map(([lang, stats]) => `- ${lang}: ${stats.passed}/${stats.total} passed`)
+              .join('\n')}
+            
+            ### Recommendations
+            ${report.recommendations.join('\n')}`;
+            
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            }); 

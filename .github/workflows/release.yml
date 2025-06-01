@@ -1,0 +1,190 @@
+name: Release Management
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version increment type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run quality checks
+        run: |
+          npm run lint
+          npm run test:coverage
+          npm run test:e2e
+          npm run test:security
+      
+      - name: Check test coverage
+        run: |
+          COVERAGE=$(cat coverage/coverage-summary.json | jq -r '.total.lines.pct')
+          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+            echo "Coverage $COVERAGE% is below threshold 80%"
+            exit 1
+          fi
+      
+      - name: Check security vulnerabilities
+        run: |
+          npm audit
+          if [ $? -ne 0 ]; then
+            echo "Security vulnerabilities found"
+            exit 1
+          fi
+      
+      - name: Check dependencies
+        run: |
+          npx depcheck
+          if [ $? -ne 0 ]; then
+            echo "Unused or missing dependencies found"
+            exit 1
+          fi
+
+  prepare-release:
+    name: Prepare Release
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm install -g semantic-release @semantic-release/changelog @semantic-release/git conventional-changelog-cli
+      
+      - name: Configure Git
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+      
+      - name: Generate version
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          NEW_VERSION=$(npx semver $CURRENT_VERSION -i ${{ github.event.inputs.version_type }})
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+      
+      - name: Update version
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          npm version $NEW_VERSION --no-git-tag-version
+          git add package.json package-lock.json
+      
+      - name: Generate changelog
+        run: |
+          conventional-changelog -p angular -i CHANGELOG.md -s
+          git add CHANGELOG.md
+      
+      - name: Create release commit
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git commit -m "chore(release): v$NEW_VERSION [skip ci]"
+          git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
+          git push origin main --follow-tags
+      
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', env.NEW_VERSION) || github.ref }}
+          name: ${{ github.event_name == 'workflow_dispatch' && format('Release v{0}', env.NEW_VERSION) || github.ref }}
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: false
+          files: |
+            dist/**
+            LICENSE
+            README.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deployment-approval:
+    name: Deployment Approval
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Pending approval notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          channel-id: 'deployments'
+          slack-message: |
+            New deployment pending approval :warning:
+            *Version:* ${{ github.event_name == 'workflow_dispatch' && env.NEW_VERSION || github.ref }}
+            *Triggered by:* ${{ github.actor }}
+            *Changes:* ${{ github.event.head_commit.message }}
+            
+            <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+  deploy-production:
+    name: Deploy to Production
+    needs: deployment-approval
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production..."
+          # Add your deployment commands here
+      
+      - name: Post-deployment verification
+        run: |
+          echo "Verifying deployment..."
+          # Add your verification steps here
+      
+      - name: Deployment notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          channel-id: 'deployments'
+          slack-message: |
+            Deployment completed successfully :white_check_mark:
+            *Version:* ${{ github.event_name == 'workflow_dispatch' && env.NEW_VERSION || github.ref }}
+            *Environment:* Production
+            *Deployed by:* ${{ github.actor }}
+            
+            <${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.event_name == 'workflow_dispatch' && format('v{0}', env.NEW_VERSION) || github.ref }}|View Release>
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }} 

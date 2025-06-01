@@ -1,0 +1,115 @@
+{
+  "name": "Contest Quality Profile",
+  "rulesets": [
+    {
+      "language": "js",
+      "rules": [
+        {
+          "key": "javascript:S3776",
+          "level": "CRITICAL",
+          "parameters": {
+            "threshold": "10"
+          }
+        },
+        {
+          "key": "javascript:S1541",
+          "level": "MAJOR",
+          "parameters": {
+            "threshold": "30"
+          }
+        },
+        {
+          "key": "javascript:S103",
+          "level": "MINOR",
+          "parameters": {
+            "maximumLineLength": "80"
+          }
+        },
+        {
+          "key": "javascript:S107",
+          "level": "MAJOR",
+          "parameters": {
+            "maximumFunctionParameters": "4"
+          }
+        }
+      ]
+    },
+    {
+      "language": "ts",
+      "rules": [
+        {
+          "key": "typescript:S4123",
+          "level": "CRITICAL"
+        },
+        {
+          "key": "typescript:S4124",
+          "level": "BLOCKER"
+        },
+        {
+          "key": "typescript:S4157",
+          "level": "MAJOR"
+        }
+      ]
+    },
+    {
+      "language": "web",
+      "rules": [
+        {
+          "key": "Web:PageWithoutTitleCheck",
+          "level": "MAJOR"
+        },
+        {
+          "key": "Web:S5254",
+          "level": "CRITICAL"
+        }
+      ]
+    }
+  ],
+  "react": {
+    "rules": [
+      {
+        "key": "react:S6478",
+        "level": "CRITICAL",
+        "description": "React components should not have too many props"
+      },
+      {
+        "key": "react:S6477",
+        "level": "MAJOR",
+        "description": "React components should not be too complex"
+      },
+      {
+        "key": "react:S6479",
+        "level": "MAJOR",
+        "description": "React useEffect hook should not have missing dependencies"
+      }
+    ]
+  },
+  "node": {
+    "rules": [
+      {
+        "key": "node:S4818",
+        "level": "BLOCKER",
+        "description": "Node.js expressions should not be vulnerable to Prototype Pollution"
+      },
+      {
+        "key": "node:S4817",
+        "level": "CRITICAL",
+        "description": "Node.js expressions should not be vulnerable to Command Injection"
+      }
+    ]
+  },
+  "security": {
+    "rules": [
+      {
+        "key": "security:S5146",
+        "level": "BLOCKER",
+        "description": "HTTP request redirections should not be vulnerable to forging attacks"
+      },
+      {
+        "key": "security:S5131",
+        "level": "CRITICAL",
+        "description": "XSS vulnerabilities should be prevented"
+      }
+    ]
+  }
+} 

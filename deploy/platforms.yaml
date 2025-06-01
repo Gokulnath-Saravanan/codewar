@@ -1,0 +1,156 @@
+# Multi-platform deployment configuration for CodeWar application
+
+version: '1.0'
+
+# Common settings across all platforms
+common:
+  image:
+    repository: yourusername/codewar
+    pullPolicy: Always
+    registries:
+      - name: dockerhub
+        url: docker.io
+      - name: ghcr
+        url: ghcr.io
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  healthcheck:
+    path: /api/health
+    port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+# Platform-specific configurations
+platforms:
+  kubernetes:
+    enabled: true
+    namespace: codewar
+    replicas: 3
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxSurge: 1
+        maxUnavailable: 0
+    ingress:
+      enabled: true
+      annotations:
+        kubernetes.io/ingress.class: nginx
+        cert-manager.io/cluster-issuer: letsencrypt-prod
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+
+  heroku:
+    enabled: true
+    app:
+      staging: codewar-staging
+      production: codewar-prod
+    addons:
+      - plan: mongodb:standard
+      - plan: papertrail:choklad
+    config:
+      NODE_ENV: production
+      NPM_CONFIG_PRODUCTION: true
+
+  railway:
+    enabled: true
+    environments:
+      - name: staging
+        domain: staging.codewar.app
+      - name: production
+        domain: codewar.app
+    services:
+      - type: web
+        name: frontend
+        healthcheck: /
+        port: 3000
+      - type: web
+        name: backend
+        healthcheck: /api/health
+        port: 4000
+      - type: db
+        name: mongodb
+        plan: shared
+
+  digitalocean:
+    enabled: true
+    region: nyc1
+    size: s-2vcpu-2gb
+    monitoring: true
+    vpc:
+      enabled: true
+    firewall:
+      inbound_rules:
+        - protocol: tcp
+          ports: [80, 443, 3000, 4000]
+          sources:
+            addresses: [0.0.0.0/0]
+    volumes:
+      - name: mongodb-data
+        size: 10Gi
+        type: do-block-storage
+
+# Monitoring and logging configuration
+monitoring:
+  prometheus:
+    enabled: true
+    scrapeInterval: 30s
+    retention: 15d
+  
+  grafana:
+    enabled: true
+    dashboards:
+      - name: container-metrics
+        configMap: grafana-container-metrics
+      - name: application-metrics
+        configMap: grafana-application-metrics
+
+  alerts:
+    slack:
+      enabled: true
+      channel: "#codewar-alerts"
+    email:
+      enabled: true
+      recipients:
+        - devops@yourcompany.com
+        - admin@yourcompany.com
+
+# Backup configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  retention:
+    days: 7
+    copies: 3
+  destinations:
+    - type: s3
+      bucket: codewar-backups
+      region: us-east-1
+    - type: gcs
+      bucket: codewar-backups
+      location: us-central1
+
+# Security settings
+security:
+  networkPolicies:
+    enabled: true
+  podSecurityPolicies:
+    enabled: true
+  secretsManagement:
+    provider: vault
+    path: codewar/
+  containerSecurity:
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false 

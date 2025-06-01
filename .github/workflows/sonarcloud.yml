@@ -1,0 +1,172 @@
+name: SonarCloud Analysis
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - staging
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+      - develop
+      - staging
+
+jobs:
+  test-coverage:
+    name: Test Coverage Analysis
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:4.4
+        ports:
+          - 27017:27017
+          
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: |
+          npm ci
+          cd frontend && npm ci
+          cd ../backend && npm ci
+          npm install -g jest-cli
+
+      - name: Run Frontend Tests
+        run: |
+          cd frontend
+          npm run test -- --coverage --watchAll=false --ci --json --outputFile=coverage/coverage-summary.json
+        env:
+          CI: true
+
+      - name: Run Backend Tests
+        run: |
+          cd backend
+          npm run test -- --coverage --watchAll=false --ci --json --outputFile=coverage/coverage-summary.json
+        env:
+          CI: true
+          NODE_ENV: test
+          MONGODB_URI: mongodb://localhost:27017/codewar_test
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
+      - name: Run E2E Tests
+        run: |
+          cd e2e
+          npm run test:coverage
+        env:
+          CI: true
+
+      - name: Validate Coverage
+        run: node scripts/validate-coverage.js
+
+      - name: Upload Coverage Reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-reports
+          path: |
+            frontend/coverage
+            backend/coverage
+            e2e/coverage
+            coverage-report.html
+            coverage-badge.json
+
+  sonarcloud:
+    name: SonarCloud Analysis
+    needs: test-coverage
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Coverage Reports
+        uses: actions/download-artifact@v3
+        with:
+          name: coverage-reports
+
+      - name: Apply Quality Profile
+        run: |
+          mkdir -p .sonarcloud
+          cp contest-quality-profile.json .sonarcloud/
+          echo "sonar.qualityprofile.contest.backup=.sonarcloud/contest-quality-profile.json" >> sonar-project.properties
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=codewar
+            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
+            -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info,backend/coverage/lcov.info,e2e/coverage/lcov.info
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.verbose=true
+
+      - name: Check Quality Gate
+        run: |
+          STATUS=$(curl -s -u ${{ secrets.SONAR_TOKEN }}: "https://sonarcloud.io/api/qualitygates/project_status?projectKey=codewar" | jq -r '.projectStatus.status')
+          if [ "$STATUS" = "ERROR" ]; then
+            echo "Quality Gate failed!"
+            exit 1
+          fi
+
+  update-badges:
+    name: Update Quality Badges
+    needs: sonarcloud
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Coverage Badge
+        uses: actions/download-artifact@v3
+        with:
+          name: coverage-reports
+          path: coverage-badge.json
+
+      - name: Update README badges
+        run: |
+          # Get metrics from SonarCloud API
+          METRICS=$(curl -s -u ${{ secrets.SONAR_TOKEN }}: "https://sonarcloud.io/api/measures/component?component=codewar&metricKeys=coverage,code_smells,bugs,vulnerabilities,security_hotspots,duplicated_lines_density")
+          
+          # Extract values
+          COVERAGE=$(echo $METRICS | jq -r '.component.measures[] | select(.metric=="coverage") | .value')
+          CODE_SMELLS=$(echo $METRICS | jq -r '.component.measures[] | select(.metric=="code_smells") | .value')
+          BUGS=$(echo $METRICS | jq -r '.component.measures[] | select(.metric=="bugs") | .value')
+          
+          # Update README.md with new badges
+          sed -i "s|!\[Coverage\].*|![Coverage](https://img.shields.io/badge/coverage-${COVERAGE}%25-${COVERAGE_COLOR})|" README.md
+          sed -i "s|!\[Code Smells\].*|![Code Smells](https://img.shields.io/badge/code_smells-${CODE_SMELLS}-${CODE_SMELLS_COLOR})|" README.md
+          sed -i "s|!\[Bugs\].*|![Bugs](https://img.shields.io/badge/bugs-${BUGS}-${BUGS_COLOR})|" README.md
+
+      - name: Generate Quality Report
+        run: |
+          # Create quality report directory
+          mkdir -p reports/quality
+          
+          # Download SonarCloud analysis results
+          curl -o reports/quality/analysis.json -s -u ${{ secrets.SONAR_TOKEN }}: "https://sonarcloud.io/api/measures/component?component=codewar&metricKeys=coverage,code_smells,bugs,vulnerabilities,security_hotspots,duplicated_lines_density,complexity,cognitive_complexity,ncloc,comment_lines_density"
+          
+          # Copy coverage report
+          cp coverage-report.html reports/quality/
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: Update quality badges and reports [skip ci]"
+          file_pattern: |
+            README.md
+            reports/quality/* 

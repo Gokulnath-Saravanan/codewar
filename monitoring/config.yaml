@@ -1,0 +1,175 @@
+# Monitoring and Observability Configuration
+
+# Global settings
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# Prometheus configuration
+prometheus:
+  global:
+    scrape_interval: 15s
+    scrape_timeout: 10s
+  
+  scrape_configs:
+    # Pipeline monitoring
+    - job_name: 'github-actions'
+      static_configs:
+        - targets: ['github-exporter:9171']
+      metrics_path: /metrics
+      params:
+        repository: ['yourusername/codewar']
+    
+    # Application monitoring
+    - job_name: 'nodejs-app'
+      static_configs:
+        - targets: ['backend:3000', 'api-gateway:4000']
+      metrics_path: /metrics
+    
+    # MongoDB monitoring
+    - job_name: 'mongodb'
+      static_configs:
+        - targets: ['mongodb-exporter:9216']
+    
+    # Contest metrics
+    - job_name: 'contest-metrics'
+      static_configs:
+        - targets: ['contest-exporter:9090']
+      metrics_path: /contest/metrics
+
+# Grafana dashboards
+grafana:
+  dashboards:
+    - name: 'Pipeline Performance'
+      uid: pipeline_performance
+      panels:
+        - title: 'Pipeline Duration'
+          type: graph
+          metrics:
+            - expr: 'github_workflow_duration_seconds'
+        - title: 'Pipeline Success Rate'
+          type: gauge
+          metrics:
+            - expr: 'github_workflow_success_ratio'
+    
+    - name: 'Application Performance'
+      uid: app_performance
+      panels:
+        - title: 'Response Time'
+          type: graph
+          metrics:
+            - expr: 'http_request_duration_seconds'
+        - title: 'Error Rate'
+          type: graph
+          metrics:
+            - expr: 'http_requests_total{status=~"5.."}'
+    
+    - name: 'Contest Dashboard'
+      uid: contest_metrics
+      panels:
+        - title: 'Active Participants'
+          type: stat
+          metrics:
+            - expr: 'contest_active_participants'
+        - title: 'Submission Rate'
+          type: graph
+          metrics:
+            - expr: 'contest_submissions_total'
+        - title: 'Average Score'
+          type: gauge
+          metrics:
+            - expr: 'contest_average_score'
+
+# Loki configuration (log aggregation)
+loki:
+  config:
+    auth_enabled: false
+    ingester:
+      lifecycler:
+        ring:
+          replication_factor: 1
+    schema_config:
+      configs:
+        - from: "2023-01-01"
+          store: boltdb
+          object_store: filesystem
+          schema: v11
+          index:
+            prefix: index_
+            period: 24h
+    storage_config:
+      boltdb:
+        directory: /tmp/loki/index
+      filesystem:
+        directory: /tmp/loki/chunks
+
+# Alert rules
+alerting_rules:
+  groups:
+    - name: pipeline
+      rules:
+        - alert: PipelineFailure
+          expr: github_workflow_status{status="failure"} > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pipeline failure detected"
+            description: "CI/CD pipeline has failed"
+
+    - name: application
+      rules:
+        - alert: HighErrorRate
+          expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High error rate detected"
+            description: "Error rate is above 5%"
+
+        - alert: SlowResponses
+          expr: http_request_duration_seconds{quantile="0.95"} > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Slow response times detected"
+            description: "95th percentile of response times is above 2 seconds"
+
+    - name: contest
+      rules:
+        - alert: LowParticipation
+          expr: contest_active_participants < 10
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Low contest participation"
+            description: "Less than 10 active participants"
+
+        - alert: HighSubmissionFailureRate
+          expr: contest_submission_failures_total / contest_submissions_total > 0.2
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High submission failure rate"
+            description: "More than 20% of submissions are failing"
+
+# Retention policies
+retention:
+  metrics:
+    retention_period: 30d
+  logs:
+    retention_period: 7d
+  traces:
+    retention_period: 7d 

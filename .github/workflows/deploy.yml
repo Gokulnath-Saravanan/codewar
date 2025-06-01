@@ -1,0 +1,224 @@
+name: Deploy Pipeline
+
+on:
+  push:
+    branches: [ main, develop, staging ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+          - contest-demo
+      version:
+        description: 'Version to deploy'
+        required: false
+        type: string
+
+env:
+  DOCKER_REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  MONGODB_VERSION: '4.4'
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      migration_needed: ${{ steps.check_migrations.outputs.needed }}
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event.inputs.version }}" != "" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=$(git describe --tags --always)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for pending migrations
+        id: check_migrations
+        run: |
+          if [ -d "backend/migrations" ] && [ "$(ls -A backend/migrations)" ]; then
+            echo "needed=true" >> $GITHUB_OUTPUT
+          else
+            echo "needed=false" >> $GITHUB_OUTPUT
+          fi
+
+  validate:
+    needs: prepare
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd frontend && npm ci
+          cd ../backend && npm ci
+
+      - name: Run tests
+        run: |
+          npm run test:all
+          npm run lint
+
+      - name: Validate deployment configs
+        run: |
+          for env in development staging production contest-demo; do
+            echo "Validating $env configuration..."
+            node scripts/validate-config.js $env
+          done
+
+  database-migration:
+    needs: [prepare, validate]
+    if: needs.prepare.outputs.migration_needed == 'true'
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:${{ env.MONGODB_VERSION }}
+        ports:
+          - 27017:27017
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Run database migrations
+        run: |
+          cd backend
+          npm ci
+          npm run migrate:up
+        env:
+          NODE_ENV: test
+          MONGODB_URI: mongodb://localhost:27017/codewar_test
+
+      - name: Verify migrations
+        run: |
+          cd backend
+          npm run migrate:status
+          npm run db:verify
+
+  deploy-development:
+    needs: [prepare, validate, database-migration]
+    if: github.ref == 'refs/heads/develop' || github.event.inputs.environment == 'development'
+    runs-on: ubuntu-latest
+    environment: development
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to local Docker
+        run: |
+          docker-compose -f docker-compose.yml up -d
+          ./scripts/wait-for-health.sh http://localhost:3000/api/health
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+
+  deploy-staging:
+    needs: [prepare, validate, database-migration]
+    if: github.ref == 'refs/heads/staging' || github.event.inputs.environment == 'staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Railway
+        uses: railway/cli-action@v2
+        with:
+          railway-token: ${{ secrets.RAILWAY_TOKEN }}
+          command: up --environment staging --detach
+
+      - name: Verify deployment
+        run: ./scripts/verify-deployment.sh staging
+        env:
+          APP_URL: https://staging.codewar.app
+
+  deploy-production:
+    needs: [prepare, validate, database-migration, deploy-staging]
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'production'
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Deploy to EKS
+        run: |
+          aws eks update-kubeconfig --name codewar-cluster
+          kubectl apply -f k8s/production/
+          ./scripts/rolling-update.sh production ${{ needs.prepare.outputs.version }}
+
+      - name: Verify deployment
+        run: ./scripts/verify-deployment.sh production
+        env:
+          APP_URL: https://codewar.app
+
+  deploy-contest:
+    needs: [prepare, validate]
+    if: github.event.inputs.environment == 'contest-demo'
+    runs-on: ubuntu-latest
+    environment: contest-demo
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Quick deploy to contest environment
+        run: |
+          docker-compose -f docker-compose.contest.yml up -d
+          ./scripts/wait-for-health.sh http://localhost:3000/api/health
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+
+  post-deploy:
+    needs: [deploy-development, deploy-staging, deploy-production, deploy-contest]
+    if: always()
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check deployment status
+        run: |
+          if [ "${{ needs.deploy-production.result }}" = "failure" ] || \
+             [ "${{ needs.deploy-staging.result }}" = "failure" ] || \
+             [ "${{ needs.deploy-development.result }}" = "failure" ] || \
+             [ "${{ needs.deploy-contest.result }}" = "failure" ]; then
+            echo "Deployment failed, initiating rollback..."
+            exit 1
+          fi
+
+      - name: Notify deployment status
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          channel-id: 'deployments'
+          slack-message: "Deployment to ${{ github.event.inputs.environment || 'all environments' }} completed successfully!"
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }} 

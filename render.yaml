@@ -18,10 +18,13 @@ services:
           type: web
           name: codewar-frontend
           property: url
+      - key: NODE_VERSION
+        value: 20.11.1
 
   - type: static
     name: codewar-frontend
-    buildCommand: cd client && npm install && npm run build
+    env: static
+    buildCommand: cd client && npm install && NODE_OPTIONS=--openssl-legacy-provider npm run build
     publishPath: client/build
     envVars:
       - key: REACT_APP_API_URL
@@ -30,4 +33,6 @@ services:
           name: codewar-backend
           property: url
       - key: NODE_VERSION
-        value: 16 
+        value: 20.11.1
+      - key: NODE_ENV
+        value: production 

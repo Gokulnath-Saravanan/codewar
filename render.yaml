@@ -2,7 +2,14 @@ services:
   - type: web
     name: codewar-backend
     env: node
-    buildCommand: cd backend && npm install
+    buildCommand: |
+      export NODE_VERSION=20.11.1
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+      export NVM_DIR="$HOME/.nvm"
+      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+      nvm install 20.11.1
+      nvm use 20.11.1
+      cd backend && npm install
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
@@ -18,13 +25,18 @@ services:
           type: web
           name: codewar-frontend
           property: url
-      - key: NODE_VERSION
-        value: 20.11.1
 
   - type: static
     name: codewar-frontend
     env: static
-    buildCommand: cd client && npm install && NODE_OPTIONS=--openssl-legacy-provider npm run build
+    buildCommand: |
+      export NODE_VERSION=20.11.1
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+      export NVM_DIR="$HOME/.nvm"
+      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+      nvm install 20.11.1
+      nvm use 20.11.1
+      cd client && npm install && npm run build
     publishPath: client/build
     envVars:
       - key: REACT_APP_API_URL
@@ -32,7 +44,5 @@ services:
           type: web
           name: codewar-backend
           property: url
-      - key: NODE_VERSION
-        value: 20.11.1
       - key: NODE_ENV
         value: production 

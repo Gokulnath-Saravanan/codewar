@@ -54,7 +54,7 @@ const HomePage = () => {
     if (user) {
       navigate('/dashboard');
     } else {
-      navigate('/register');
+      navigate('/auth/register');
     }
   };
 

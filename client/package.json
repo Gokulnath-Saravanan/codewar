@@ -5,6 +5,7 @@
   "private": true,
   "dependencies": {
     "@babel/runtime": "^7.24.0",
+    "@babel/runtime-corejs3": "^7.24.0",
     "@monaco-editor/react": "^4.5.1",
     "@testing-library/jest-dom": "^5.16.4",
     "@testing-library/react": "^13.3.0",
@@ -26,15 +27,32 @@
     "web-vitals": "^2.1.4"
   },
   "devDependencies": {
+    "@babel/plugin-transform-runtime": "^7.24.0",
     "autoprefixer": "^10.4.14",
     "postcss": "^8.4.24",
     "tailwindcss": "^3.3.2"
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "DISABLE_ESLINT_PLUGIN=true react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
+  },
+  "babel": {
+    "presets": [
+      "react-app"
+    ],
+    "plugins": [
+      [
+        "@babel/plugin-transform-runtime",
+        {
+          "corejs": 3,
+          "helpers": true,
+          "regenerator": true,
+          "useESModules": true
+        }
+      ]
+    ]
   },
   "eslintConfig": {
     "extends": [

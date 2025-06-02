@@ -12,7 +12,7 @@ services:
       - key: NODE_VERSION
         value: 20.11.1
       - key: REACT_APP_API_URL
-        value: https://codewar-backend.onrender.com
+        value: https://codewar-backend.onrender.com/api
     headers:
       - path: /*
         name: Cache-Control

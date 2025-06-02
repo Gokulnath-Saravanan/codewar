@@ -4,6 +4,7 @@
   "description": "Professional Online Coding Contest Platform - Frontend",
   "private": true,
   "dependencies": {
+    "@babel/runtime": "^7.24.0",
     "@monaco-editor/react": "^4.5.1",
     "@testing-library/jest-dom": "^5.16.4",
     "@testing-library/react": "^13.3.0",

@@ -10,7 +10,7 @@ services:
         destination: /index.html
     envVars:
       - key: NODE_VERSION
-        value: 16
+        value: 20.11.1
       - key: REACT_APP_API_URL
         value: https://codewar-backend.onrender.com
     headers:

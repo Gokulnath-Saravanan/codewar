@@ -13,7 +13,7 @@ import {
   FiAward,
   FiTrendingUp
 } from 'react-icons/fi';
-import api from '../services/api';
+import { leaderboardAPI, contestAPI, statsAPI } from '../services/api';
 
 const HomePage = () => {
   const { user } = useContext(AuthContext);
@@ -35,9 +35,9 @@ const HomePage = () => {
   const fetchHomePageData = async () => {
     try {
       const [statsRes, contestsRes, leaderboardRes] = await Promise.all([
-        api.get('/stats/platform'),
-        api.get('/contests?featured=true&limit=3'),
-        api.get('/leaderboard/global?limit=5')
+        statsAPI.getPlatformStats(),
+        contestAPI.getContests({ featured: true, limit: 3 }),
+        leaderboardAPI.getGlobalLeaderboard({ limit: 5 })
       ]);
 
       setStats(statsRes.data || {});

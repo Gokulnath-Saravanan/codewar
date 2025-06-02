@@ -151,5 +151,12 @@ export const uploadAPI = {
   deleteFile: (fileId) => api.delete(`/upload/${fileId}`),
 };
 
+// Stats API
+export const statsAPI = {
+  getPlatformStats: () => api.get('/stats/platform'),
+  getUserStats: (userId) => api.get(`/stats/user/${userId}`),
+  getContestStats: (contestId) => api.get(`/stats/contest/${contestId}`)
+};
+
 // Default export for backward compatibility
 export default api;

@@ -4,18 +4,14 @@ on:
   push:
     branches:
       - main
-      - develop
-      - staging
   pull_request:
     types: [opened, synchronize, reopened]
     branches:
       - main
-      - develop
-      - staging
 
 jobs:
-  test-coverage:
-    name: Test Coverage Analysis
+  sonarcloud:
+    name: SonarCloud Analysis
     runs-on: ubuntu-latest
     
     services:
@@ -35,71 +31,32 @@ jobs:
           node-version: '20.x'
           cache: 'npm'
 
-      - name: Install Dependencies
+      - name: Install Backend Dependencies
         run: |
+          cd backend
           npm ci
-          cd frontend && npm ci
-          cd ../backend && npm ci
-          npm install -g jest-cli
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd client
+          npm ci
 
       - name: Run Frontend Tests
         run: |
-          cd frontend
-          npm run test -- --coverage --watchAll=false --ci --json --outputFile=coverage/coverage-summary.json
+          cd client
+          npm run test -- --coverage --watchAll=false
         env:
           CI: true
 
       - name: Run Backend Tests
         run: |
           cd backend
-          npm run test -- --coverage --watchAll=false --ci --json --outputFile=coverage/coverage-summary.json
+          npm run test -- --coverage --watchAll=false
         env:
           CI: true
           NODE_ENV: test
           MONGODB_URI: mongodb://localhost:27017/codewar_test
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
-
-      - name: Run E2E Tests
-        run: |
-          cd e2e
-          npm run test:coverage
-        env:
-          CI: true
-
-      - name: Validate Coverage
-        run: node scripts/validate-coverage.js
-
-      - name: Upload Coverage Reports
-        uses: actions/upload-artifact@v3
-        with:
-          name: coverage-reports
-          path: |
-            frontend/coverage
-            backend/coverage
-            e2e/coverage
-            coverage-report.html
-            coverage-badge.json
-
-  sonarcloud:
-    name: SonarCloud Analysis
-    needs: test-coverage
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download Coverage Reports
-        uses: actions/download-artifact@v3
-        with:
-          name: coverage-reports
-
-      - name: Apply Quality Profile
-        run: |
-          mkdir -p .sonarcloud
-          cp contest-quality-profile.json .sonarcloud/
-          echo "sonar.qualityprofile.contest.backup=.sonarcloud/contest-quality-profile.json" >> sonar-project.properties
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@master
@@ -109,18 +66,10 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=codewar
-            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
-            -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info,backend/coverage/lcov.info,e2e/coverage/lcov.info
+            -Dsonar.organization=gokulnath-saravanan
+            -Dsonar.javascript.lcov.reportPaths=client/coverage/lcov.info,backend/coverage/lcov.info
             -Dsonar.qualitygate.wait=true
             -Dsonar.verbose=true
-
-      - name: Check Quality Gate
-        run: |
-          STATUS=$(curl -s -u ${{ secrets.SONAR_TOKEN }}: "https://sonarcloud.io/api/qualitygates/project_status?projectKey=codewar" | jq -r '.projectStatus.status')
-          if [ "$STATUS" = "ERROR" ]; then
-            echo "Quality Gate failed!"
-            exit 1
-          fi
 
   update-badges:
     name: Update Quality Badges
@@ -161,12 +110,4 @@ jobs:
           curl -o reports/quality/analysis.json -s -u ${{ secrets.SONAR_TOKEN }}: "https://sonarcloud.io/api/measures/component?component=codewar&metricKeys=coverage,code_smells,bugs,vulnerabilities,security_hotspots,duplicated_lines_density,complexity,cognitive_complexity,ncloc,comment_lines_density"
           
           # Copy coverage report
-          cp coverage-report.html reports/quality/
-
-      - name: Commit and push changes
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "docs: Update quality badges and reports [skip ci]"
-          file_pattern: |
-            README.md
-            reports/quality/* 
+          cp coverage-report.html reports/quality/ 

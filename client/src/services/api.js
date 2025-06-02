@@ -1,7 +1,8 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+// Use the proxy configuration from package.json
+const API_BASE_URL = '/api';
 
 // Create axios instance
 export const api = axios.create({

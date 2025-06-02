@@ -37,6 +37,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies and generate lock files
+        run: |
+          npm install
+          cd client && npm install
+          cd ../backend && npm install
+
       - name: Determine version
         id: version
         run: |
@@ -55,6 +67,46 @@ jobs:
             echo "needed=false" >> $GITHUB_OUTPUT
           fi
 
+  sonarcloud:
+    needs: prepare
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm install
+          cd client && npm install
+          cd ../backend && npm install
+
+      - name: Run tests with coverage
+        run: |
+          npm run test
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=${{ github.repository_owner }}
+            -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
+            -Dsonar.javascript.lcov.reportPaths=./coverage/lcov.info
+            -Dsonar.sources=.
+            -Dsonar.test.inclusions=**/*.test.js,**/*.test.jsx,**/*.test.ts,**/*.test.tsx
+            -Dsonar.coverage.exclusions=**/*.test.js,**/*.test.jsx,**/*.test.ts,**/*.test.tsx,**/tests/**/*
+            -Dsonar.exclusions=**/node_modules/**,**/coverage/**,**/build/**,**/dist/**
+
   validate:
     needs: prepare
     runs-on: ubuntu-latest
@@ -66,7 +118,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
-          cache: 'npm'
 
       - name: Install dependencies
         run: |
